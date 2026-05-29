@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Phase 1 deployer — run with: sudo bash /home/glen/dualing-simulation/deploy/install.sh
+# Deployer — run with: sudo bash /home/glen/dualing-simulation/deploy/install.sh
 set -euo pipefail
 
 if [[ $EUID -ne 0 ]]; then
@@ -8,7 +8,7 @@ if [[ $EUID -ne 0 ]]; then
 fi
 
 REPO=/home/glen/dualing-simulation
-DOMAIN=smartenergylab.software
+DOMAIN=smartenergylab.online
 
 echo "==> Apt: ensure python venv, certbot, apache modules present"
 apt-get update -qq
@@ -23,11 +23,25 @@ runuser -u glen -- ${REPO}/.venv/bin/pip install --quiet --upgrade pip
 runuser -u glen -- ${REPO}/.venv/bin/pip install --quiet -r ${REPO}/requirements.txt
 runuser -u glen -- ${REPO}/.venv/bin/python -c "import fastapi, pvlib; print('  python deps OK')"
 
-echo "==> Enable Apache reverse-proxy modules"
-a2enmod proxy proxy_http headers >/dev/null
+echo "==> Enable Apache modules (proxy + TLS + rewrite)"
+a2enmod proxy proxy_http headers ssl rewrite >/dev/null
 
-echo "==> Install Apache vhost for ${DOMAIN}"
-install -m 644 ${REPO}/deploy/smartenergylab.conf /etc/apache2/sites-available/smartenergylab.conf
+# Bootstrap with an HTTP-only vhost first: the real vhost references a TLS cert
+# that doesn't exist yet on a fresh host, so installing it now would fail
+# configtest. This minimal :80 vhost answers immediately and serves the ACME
+# HTTP-01 challenge out of /var/www/html.
+echo "==> Install HTTP bootstrap vhost for ${DOMAIN}"
+cat >/etc/apache2/sites-available/smartenergylab.conf <<BOOTSTRAP
+<VirtualHost *:80>
+    ServerName ${DOMAIN}
+    ServerAlias www.${DOMAIN}
+    DocumentRoot /var/www/html
+    ProxyPreserveHost On
+    ProxyRequests Off
+    ProxyPass        /dualing-simulation/ http://127.0.0.1:8765/dualing-simulation/
+    ProxyPassReverse /dualing-simulation/ http://127.0.0.1:8765/dualing-simulation/
+</VirtualHost>
+BOOTSTRAP
 a2ensite smartenergylab.conf >/dev/null
 # Default site competes for ServerName-less requests on :80 — keep it disabled
 a2dissite 000-default.conf >/dev/null 2>&1 || true
@@ -46,18 +60,23 @@ echo "==> Local check via Apache (HTTP):"
 curl -fsS -H "Host: ${DOMAIN}" http://127.0.0.1/dualing-simulation/api/health && echo
 
 echo
-echo "==> Attempting TLS via certbot --apache (requires DNS to resolve to this server)"
-if certbot --apache -n --agree-tos --redirect \
+echo "==> Obtain TLS cert via certbot (requires DNS to resolve to this server)"
+# certonly uses the apache authenticator only — it does NOT rewrite the vhost,
+# so it avoids the multi-domain 'vhost ambiguity' the --apache *installer* trips
+# on. We install our own :80+:443 vhost from the repo afterwards.
+if certbot certonly --apache -n --agree-tos \
     --email glen.morris@solarquip.com.au \
     -d ${DOMAIN} -d www.${DOMAIN}; then
-  echo "==> TLS issued. Reloading apache."
+  echo "==> Cert obtained. Installing the HTTP→HTTPS + TLS vhost."
+  install -m 644 ${REPO}/deploy/smartenergylab.conf /etc/apache2/sites-available/smartenergylab.conf
+  apache2ctl configtest
   systemctl reload apache2
+  echo "==> Local HTTPS check:"
+  curl -fsSk -H "Host: ${DOMAIN}" https://127.0.0.1/dualing-simulation/api/health && echo
 else
   echo "!! certbot failed — likely DNS hasn't propagated yet."
-  echo "   Re-run this when 'dig +short ${DOMAIN}' returns 178.104.27.195:"
-  echo "     sudo certbot --apache -n --agree-tos --redirect \\"
-  echo "       --email glen.morris@solarquip.com.au \\"
-  echo "       -d ${DOMAIN} -d www.${DOMAIN}"
+  echo "   The site is live on HTTP only. Re-run this script once"
+  echo "   'dig +short ${DOMAIN}' returns this server's public IP."
 fi
 
 echo
