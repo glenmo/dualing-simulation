@@ -79,6 +79,49 @@ def test_ramp_respected() -> None:
     assert state.actual_per_phase_kw[0] == pytest.approx(0.1, abs=1e-9)
 
 
+def test_soc_ceiling_curtails_surplus_pv() -> None:
+    sp = SystemParams.estore_default()
+    state = ctl.make_state(sp)
+    state.soc_pct = sp.soc_max_pct          # already full
+    state.actual_per_phase_kw[:] = 0.0      # inverter exporting nothing
+    state.actual_total_kw = 0.0
+    ctl.integrate_soc(state, sp, pv_kw=3.0, dt_s=1.0)
+    # Nowhere to put 3 kW of PV: it must be curtailed, not stored or exported.
+    assert state.soc_pct == pytest.approx(sp.soc_max_pct)
+    assert state.curtail_kw == pytest.approx(3.0)
+
+
+def test_soc_floor_caps_discharge_to_pv() -> None:
+    sp = SystemParams.estore_default()
+    state = ctl.make_state(sp)
+    state.soc_pct = sp.soc_min_pct          # empty
+    state.actual_per_phase_kw[:] = 0.0
+    state.actual_per_phase_kw[0] = 2.0      # trying to discharge 2 kW
+    state.actual_total_kw = 2.0
+    ctl.integrate_soc(state, sp, pv_kw=0.0, dt_s=1.0)
+    # No charge left and no PV: output must fall to zero, SOC pinned at the floor.
+    assert state.soc_pct == pytest.approx(sp.soc_min_pct)
+    assert state.actual_total_kw == pytest.approx(0.0)
+
+
+def test_full_batteries_curtail_without_exporting() -> None:
+    """Sunny noon with batteries already full: surplus PV is curtailed (recorded),
+    and the POC still holds near target rather than dumping power to the grid."""
+    p = _short_params(duration_s=600.0, dt_s=0.5)
+    p.start_hour = 12.0
+    p.cloud_factor = 1.0
+    p.load.peaks_per_hour = 0.0
+    p.estore.soc_initial_pct = p.estore.soc_max_pct
+    p.solax.soc_initial_pct = p.solax.soc_max_pct
+    r = run(p)
+    assert float(r.estore_curtail_kw.sum() + r.solax_curtail_kw.sum()) > 0.0
+    settled = r.poc_total_w[len(r.poc_total_w) // 3:]
+    assert abs(settled.mean() - 100.0) < 600.0, settled.mean()
+    # SOC can't climb past max.
+    assert r.estore_soc_pct.max() <= p.estore.soc_max_pct + 1e-6
+    assert r.solax_soc_pct.max() <= p.solax.soc_max_pct + 1e-6
+
+
 def test_three_phase_priority_allocation() -> None:
     sp = SystemParams.solax_default()
     sp.deadband_w = 0.0

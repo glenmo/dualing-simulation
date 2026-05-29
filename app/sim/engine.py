@@ -25,6 +25,8 @@ class SimResult:
     solax_ac_total_kw: np.ndarray
     estore_soc_pct: np.ndarray
     solax_soc_pct: np.ndarray
+    estore_curtail_kw: np.ndarray           # PV curtailed (battery full)
+    solax_curtail_kw: np.ndarray
     poc_total_w: np.ndarray
     poc_per_phase_w: np.ndarray             # shape (3, N)
     load_total_kw: np.ndarray
@@ -41,6 +43,8 @@ class SimResult:
             "solax_ac_total_kw": self.solax_ac_total_kw.tolist(),
             "estore_soc_pct": self.estore_soc_pct.tolist(),
             "solax_soc_pct": self.solax_soc_pct.tolist(),
+            "estore_curtail_kw": self.estore_curtail_kw.tolist(),
+            "solax_curtail_kw": self.solax_curtail_kw.tolist(),
             "poc_total_w": self.poc_total_w.tolist(),
             "poc_per_phase_w": self.poc_per_phase_w.tolist(),
             "load_total_kw": self.load_total_kw.tolist(),
@@ -87,6 +91,8 @@ def run(params: SimParams) -> SimResult:
         solax_ac_total_kw=np.zeros(n_log),
         estore_soc_pct=np.zeros(n_log),
         solax_soc_pct=np.zeros(n_log),
+        estore_curtail_kw=np.zeros(n_log),
+        solax_curtail_kw=np.zeros(n_log),
         poc_total_w=np.zeros(n_log),
         poc_per_phase_w=np.zeros((3, n_log)),
         load_total_kw=np.zeros(n_log),
@@ -143,6 +149,8 @@ def run(params: SimParams) -> SimResult:
             out.solax_ac_total_kw[log_idx] = solax_state.actual_total_kw
             out.estore_soc_pct[log_idx] = estore_state.soc_pct
             out.solax_soc_pct[log_idx] = solax_state.soc_pct
+            out.estore_curtail_kw[log_idx] = estore_state.curtail_kw
+            out.solax_curtail_kw[log_idx] = solax_state.curtail_kw
             out.poc_total_w[log_idx] = last_poc_w
             out.poc_per_phase_w[:, log_idx] = last_poc_per_phase_w
             out.load_total_kw[log_idx] = float(load_now.sum())
@@ -159,6 +167,8 @@ def run(params: SimParams) -> SimResult:
         out.solax_ac_total_kw = out.solax_ac_total_kw[:log_idx]
         out.estore_soc_pct = out.estore_soc_pct[:log_idx]
         out.solax_soc_pct = out.solax_soc_pct[:log_idx]
+        out.estore_curtail_kw = out.estore_curtail_kw[:log_idx]
+        out.solax_curtail_kw = out.solax_curtail_kw[:log_idx]
         out.poc_total_w = out.poc_total_w[:log_idx]
         out.poc_per_phase_w = out.poc_per_phase_w[:, :log_idx]
         out.load_total_kw = out.load_total_kw[:log_idx]

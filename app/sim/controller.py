@@ -28,6 +28,7 @@ class InverterState:
     commanded_per_phase_kw: np.ndarray = None       # type: ignore[assignment]
     actual_per_phase_kw: np.ndarray = None          # type: ignore[assignment]
     soc_pct: float = 0.0
+    curtail_kw: float = 0.0          # PV curtailed this tick (battery full)
     last_sample_t: float = -1e9
 
     def __post_init__(self) -> None:
@@ -127,37 +128,58 @@ def integrate_soc(
     pv_kw: float,
     dt_s: float,
 ) -> None:
-    """Update battery SOC given the inverter's actual AC output and PV available.
+    """Update battery SOC from the inverter's AC output and available PV, holding
+    the SOC limits with physically honest fallbacks.
 
-    Net battery flow = actual_ac_out - pv_available (positive = discharging).
-    SOC drops by discharge_kWh / capacity_kWh; charging gains efficiency × |power|.
+    ``actual_total_kw`` is the hybrid inverter's *total* AC output (PV
+    pass-through + battery discharge), so the intended battery flow is::
+
+        battery_kw = actual_total_kw - pv_kw     # >0 discharge, <0 charge
+
+    - **At the SOC floor** the battery can't sustain the discharge, so the AC
+      output is reduced toward PV-only (a partial discharge that lands exactly on
+      ``soc_min_pct`` for the tick).
+    - **At the SOC ceiling** the battery can't absorb the PV surplus; a
+      zero-export system curtails the excess PV rather than exporting it. The
+      curtailed power is recorded in ``state.curtail_kw`` so the engine can
+      report wasted solar — it is no longer silently discarded.
     """
+    state.curtail_kw = 0.0
     cap_kwh = sp.battery_capacity_kwh
     hrs = dt_s / 3600.0
-    eta_one_way = float(np.sqrt(sp.round_trip_efficiency))
+    eta = float(np.sqrt(sp.round_trip_efficiency))
     battery_kw = state.actual_total_kw - pv_kw
 
-    if battery_kw > 0:
-        # Discharging: pull more from battery than is delivered to AC (efficiency loss)
-        dsoc = -(battery_kw / eta_one_way) * hrs / cap_kwh * 100.0
+    if battery_kw >= 0:
+        # Discharging: DC drawn exceeds AC delivered by the one-way efficiency.
+        dc_kw = battery_kw / eta
+        usable_kwh = (state.soc_pct - sp.soc_min_pct) / 100.0 * cap_kwh
+        if dc_kw * hrs <= usable_kwh:
+            state.soc_pct -= dc_kw * hrs / cap_kwh * 100.0
+        else:
+            # Battery hits the floor mid-tick: it can only supply `usable_kwh`.
+            max_batt_ac = usable_kwh / hrs * eta
+            _scale_actual(state, pv_kw + max_batt_ac)
+            state.soc_pct = sp.soc_min_pct
     else:
-        # Charging from PV surplus: store less than is generated
-        dsoc = -(battery_kw * eta_one_way) * hrs / cap_kwh * 100.0
+        # Charging from PV surplus: stored DC energy gains the efficiency factor.
+        dc_kw = -battery_kw * eta
+        headroom_kwh = (sp.soc_max_pct - state.soc_pct) / 100.0 * cap_kwh
+        if dc_kw * hrs <= headroom_kwh:
+            state.soc_pct += dc_kw * hrs / cap_kwh * 100.0
+        else:
+            # Battery fills mid-tick: store what fits, curtail the surplus PV.
+            absorbable_ac = (headroom_kwh / hrs) / eta   # PV kW the battery takes
+            state.curtail_kw = max(0.0, -battery_kw - absorbable_ac)
+            state.soc_pct = sp.soc_max_pct
 
-    new_soc = state.soc_pct + dsoc
-    if new_soc < sp.soc_min_pct:
-        # Out of usable charge — cannot discharge further; clamp output to PV-only
-        state.soc_pct = sp.soc_min_pct
-        # Inform the engine on next tick by capping commanded to PV (cheap hack:
-        # zero the commanded delta — controller will re-react next sample).
-        if battery_kw > 0:
-            scale = pv_kw / max(state.actual_total_kw, 1e-6)
-            state.actual_per_phase_kw *= max(0.0, scale)
-            state.actual_total_kw = float(state.actual_per_phase_kw.sum())
-    elif new_soc > sp.soc_max_pct:
-        state.soc_pct = sp.soc_max_pct
-    else:
-        state.soc_pct = new_soc
+
+def _scale_actual(state: InverterState, target_total_kw: float) -> None:
+    """Scale actual per-phase output so the total becomes ``target_total_kw``."""
+    cur = state.actual_total_kw
+    if cur > 1e-9:
+        state.actual_per_phase_kw *= max(0.0, target_total_kw / cur)
+    state.actual_total_kw = float(state.actual_per_phase_kw.sum())
 
 
 def _phase_to_idx(p: str) -> int:

@@ -33,8 +33,10 @@ The two modelled systems are based on a real site (Mount Toolebewong, VIC):
   its own sample rate, ramps actual output toward command, integrates battery
   SOC, and accounts the POC. An inverter's `actual` AC output is the **total**
   hybrid output (PV pass-through + battery discharge), so PV is *not* subtracted
-  again at the POC — surplus PV charges the battery instead of exporting.
-  Results are down-sampled to 1 Hz for plotting.
+  again at the POC — surplus PV charges the battery instead of exporting. At the
+  SOC ceiling the battery can't absorb more, so the surplus is **curtailed**
+  (reported per system) rather than exported; at the floor the AC output falls
+  back to PV-only. Results are down-sampled to 1 Hz for plotting.
 
 ## Architecture
 

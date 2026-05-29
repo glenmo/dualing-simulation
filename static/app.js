@@ -253,10 +253,18 @@ function renderCharts(payload, r) {
     ds("SolaX", r.solax_soc_pct, PALETTE.solax),
   ], "%");
 
-  lineChart("chart-pv", "Solar PV generation", labels, [
+  lineChart("chart-pv", "Solar PV generation (dashed = curtailed)", labels, [
     ds("eStore PV", r.pv_estore_kw, PALETTE.estore),
     ds("SolaX PV", r.pv_solax_kw, PALETTE.solax),
+    ds("eStore curtailed", r.estore_curtail_kw, PALETTE.amber, { borderDash: [4, 3] }),
+    ds("SolaX curtailed", r.solax_curtail_kw, PALETTE.poc, { borderDash: [4, 3] }),
   ], "kW");
+}
+
+// Integrate a 1 Hz kW series to kWh using the sample spacing.
+function energyKwh(series, t_s) {
+  const dt_h = t_s.length > 1 ? (t_s[1] - t_s[0]) / 3600 : 0;
+  return series.reduce((s, x) => s + x, 0) * dt_h;
 }
 
 function mean(a) {
@@ -273,6 +281,7 @@ function renderSummary(r) {
     ["Min POC (export)", `${Math.min(...r.poc_total_w).toFixed(0)} W`],
     ["eStore final SOC", `${r.estore_soc_pct.at(-1).toFixed(1)} %`],
     ["SolaX final SOC", `${r.solax_soc_pct.at(-1).toFixed(1)} %`],
+    ["PV curtailed", `${(energyKwh(r.estore_curtail_kw, r.t_s) + energyKwh(r.solax_curtail_kw, r.t_s)).toFixed(2)} kWh`],
   ];
   document.getElementById("summary").innerHTML = cards
     .map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`)
