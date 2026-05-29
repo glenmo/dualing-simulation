@@ -1,5 +1,7 @@
 from pathlib import Path
 
+from typing import Literal
+
 from fastapi import FastAPI, HTTPException
 from fastapi.responses import FileResponse
 from fastapi.staticfiles import StaticFiles
@@ -81,6 +83,7 @@ class SimParamsIn(BaseModel):
     duration_s: float = Field(gt=0, le=86400 * 2)
     dt_s: float = Field(gt=0, le=1.0)
     cloud_factor: float = Field(ge=0, le=1)
+    mode: Literal["uncoordinated", "coordinated"] = "uncoordinated"
     estore: SystemParamsIn
     solax: SystemParamsIn
     load: LoadParamsIn = LoadParamsIn()
@@ -92,6 +95,7 @@ class SimParamsIn(BaseModel):
             duration_s=self.duration_s,
             dt_s=self.dt_s,
             cloud_factor=self.cloud_factor,
+            mode=self.mode,
             estore=self.estore.to_dc(),
             solax=self.solax.to_dc(),
             load=self.load.to_dc(),
@@ -108,6 +112,7 @@ def defaults() -> dict:
         "duration_s": p.duration_s,
         "dt_s": p.dt_s,
         "cloud_factor": p.cloud_factor,
+        "mode": p.mode,
         "estore": p.estore.__dict__,
         "solax": p.solax.__dict__,
         "load": {

@@ -29,6 +29,16 @@ The two modelled systems are based on a real site (Mount Toolebewong, VIC):
   phase; the three-phase controller allocates its commanded total across phases
   greedily, most-loaded first. Each sees only the *previous tick's* POC
   measurement, like a real CT-clamp controller.
+- **Control mode** (`mode`) — `uncoordinated` (default) runs each controller
+  independently: both chase the *full* POC error, so their combined response is
+  ~2× the error. `coordinated` runs one site controller that measures the error
+  once, increments a single combined command, and splits it across the two
+  inverters by capacity. Because the uncoordinated pair has double the effective
+  loop gain, it goes unstable — the "duel" — at roughly half the gain the
+  coordinated controller tolerates: at the conservative default gain both are
+  well-damped and similar, but raise `proportional_gain` past ~2 and the
+  uncoordinated POC oscillation roughly doubles while coordinated stays in hand.
+  Toggle the mode (and watch the oscillation metrics) to see it.
 - **Engine** (`app/sim/engine.py`) — ticks at `dt_s`, runs each controller at
   its own sample rate, ramps actual output toward command, integrates battery
   SOC, and accounts the POC. An inverter's `actual` AC output is the **total**

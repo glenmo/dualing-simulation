@@ -100,17 +100,78 @@ def update_three_phase(
     desired_total = _apply_proportional(state.commanded_total_kw, poc_total_w, sp)
     desired_total = float(np.clip(desired_total, 0.0, sp.inverter_max_kw))
     state.commanded_total_kw = desired_total
+    state.commanded_per_phase_kw = _greedy_per_phase(
+        desired_total, sp.max_kw_per_phase, load_per_phase_kw
+    )
 
-    # Greedy fill from the most-loaded phase down, capping each at max_kw_per_phase.
+
+def _greedy_per_phase(
+    total_kw: float, max_kw_per_phase: float, load_per_phase_kw: np.ndarray
+) -> np.ndarray:
+    """Distribute a total across phases, filling the most-loaded phase first and
+    capping each at ``max_kw_per_phase``."""
     per_phase = np.zeros(3)
-    remaining = desired_total
+    remaining = total_kw
     for idx in np.argsort(-load_per_phase_kw):
-        take = min(remaining, sp.max_kw_per_phase)
+        take = min(remaining, max_kw_per_phase)
         per_phase[idx] = take
         remaining -= take
         if remaining <= 1e-6:
             break
-    state.commanded_per_phase_kw = per_phase
+    return per_phase
+
+
+def update_coordinated(
+    estore_state: InverterState,
+    estore_sp: SystemParams,
+    solax_state: InverterState,
+    solax_sp: SystemParams,
+    poc_total_w: float,
+    load_per_phase_kw: np.ndarray,
+    t_now: float,
+) -> None:
+    """Coordinated site controller — the cooperative contrast to the duel.
+
+    Instead of each inverter independently chasing the full POC error (which
+    double-counts the response and oscillates), a single coordinator measures the
+    error once, increments one *combined* command, and splits it across the two
+    inverters by inverter capacity. Because the capacity weights sum to one and
+    the combined command is clipped to the total capacity, each share lands within
+    its own inverter limit without further juggling.
+
+    Runs at the faster of the two sample intervals; uses the average gain,
+    deadband and target of the two systems as the site setpoint.
+    """
+    interval = min(estore_sp.sample_interval_s, solax_sp.sample_interval_s)
+    if (t_now - estore_state.last_sample_t) + 1e-9 < interval:
+        return
+    estore_state.last_sample_t = t_now
+    solax_state.last_sample_t = t_now
+
+    gain = 0.5 * (estore_sp.proportional_gain + solax_sp.proportional_gain)
+    deadband = 0.5 * (estore_sp.deadband_w + solax_sp.deadband_w)
+    target = 0.5 * (estore_sp.target_poc_import_w + solax_sp.target_poc_import_w)
+    total_cap = estore_sp.inverter_max_kw + solax_sp.inverter_max_kw
+
+    err_w = poc_total_w - target
+    combined = estore_state.commanded_total_kw + solax_state.commanded_total_kw
+    if abs(err_w) > deadband:
+        combined += gain * err_w / 1000.0
+    combined = float(np.clip(combined, 0.0, total_cap))
+
+    # Capacity-weighted split (both shares are inherently within their caps).
+    e_cmd = combined * estore_sp.inverter_max_kw / total_cap
+    s_cmd = combined * solax_sp.inverter_max_kw / total_cap
+
+    assert estore_sp.phase is not None, "single-phase system must specify a phase"
+    estore_state.commanded_total_kw = e_cmd
+    estore_state.commanded_per_phase_kw[:] = 0.0
+    estore_state.commanded_per_phase_kw[_phase_to_idx(estore_sp.phase)] = e_cmd
+
+    solax_state.commanded_total_kw = s_cmd
+    solax_state.commanded_per_phase_kw = _greedy_per_phase(
+        s_cmd, solax_sp.max_kw_per_phase, load_per_phase_kw
+    )
 
 
 def ramp_toward_command(state: InverterState, sp: SystemParams, dt_s: float) -> None:

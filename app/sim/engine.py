@@ -115,12 +115,18 @@ def run(params: SimParams) -> SimResult:
 
         # Controllers see the POC measurement from the previous tick — they are
         # not omniscient; this is what physical CT-clamp controllers do.
-        ctl.update_single_phase(estore_state, params.estore, last_poc_w, t)
-        # SolaX needs per-phase load to allocate; use last-tick estimate
+        # SolaX needs per-phase load to allocate; use last-tick estimate.
         last_load_kw = load_phase[:, max(k - 1, 0)]
-        ctl.update_three_phase(
-            solax_state, params.solax, last_poc_w, last_load_kw, t
-        )
+        if params.mode == "coordinated":
+            ctl.update_coordinated(
+                estore_state, params.estore, solax_state, params.solax,
+                last_poc_w, last_load_kw, t,
+            )
+        else:
+            ctl.update_single_phase(estore_state, params.estore, last_poc_w, t)
+            ctl.update_three_phase(
+                solax_state, params.solax, last_poc_w, last_load_kw, t
+            )
 
         # Ramp actuals toward commands
         ctl.ramp_toward_command(estore_state, params.estore, params.dt_s)

@@ -10,6 +10,7 @@ from dataclasses import dataclass, field
 from typing import Literal, Optional
 
 Phase = Literal["A", "B", "C"]
+Mode = Literal["uncoordinated", "coordinated"]
 
 
 @dataclass
@@ -101,6 +102,9 @@ class SimParams:
     duration_s: float
     dt_s: float
     cloud_factor: float         # 0..1; 1.0 = clear sky, 0.0 = fully overcast
+    # "uncoordinated": each controller chases the full POC error (they duel).
+    # "coordinated": one site coordinator splits the response between them.
+    mode: Mode = "uncoordinated"
     estore: SystemParams = field(default_factory=SystemParams.estore_default)
     solax: SystemParams = field(default_factory=SystemParams.solax_default)
     load: LoadParams = field(default_factory=LoadParams)
@@ -113,4 +117,5 @@ class SimParams:
             duration_s=3600.0,
             dt_s=0.1,
             cloud_factor=1.0,
+            mode="uncoordinated",
         )

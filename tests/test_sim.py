@@ -199,6 +199,36 @@ def test_run_attaches_metrics() -> None:
     assert r.to_json_dict()["metrics"] is r.metrics
 
 
+def _duel_scenario(mode: str, gain: float = 3.0) -> SimParams:
+    p = _short_params(duration_s=600.0, dt_s=0.2)
+    p.cloud_factor = 0.0           # remove PV variability — isolate the control duel
+    p.load.peaks_per_hour = 0.0    # smooth load
+    p.mode = mode
+    # The duel only erupts once the loop gain is high enough that the
+    # uncoordinated pair's doubled effective gain destabilises it.
+    p.estore.proportional_gain = gain
+    p.solax.proportional_gain = gain
+    return p
+
+
+def test_coordinated_mode_tames_the_duel() -> None:
+    un = run(_duel_scenario("uncoordinated"))
+    co = run(_duel_scenario("coordinated"))
+    # At a destabilising gain the duel roughly doubles the swing; coordination
+    # (one controller's worth of correction, split) keeps it well under control.
+    assert co.metrics["poc_rms_error_w"] < 0.8 * un.metrics["poc_rms_error_w"]
+    assert co.metrics["poc_peak_to_peak_w"] < 0.8 * un.metrics["poc_peak_to_peak_w"]
+    # ...while still steering the POC to the target on average.
+    settled = co.poc_total_w[len(co.poc_total_w) // 3:]
+    assert abs(settled.mean() - 100.0) < 500.0, settled.mean()
+
+
+def test_coordinated_respects_inverter_caps() -> None:
+    r = run(_duel_scenario("coordinated"))
+    assert np.all(r.estore_ac_kw <= 5.0 + 1e-6)        # eStore inverter_max
+    assert np.all(r.solax_ac_per_phase_kw <= 5.0 + 1e-6)  # SolaX max_kw_per_phase
+
+
 def test_full_run_produces_consistent_shapes() -> None:
     p = _short_params(duration_s=120.0, dt_s=0.5)
     r = run(p)

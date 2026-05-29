@@ -10,6 +10,7 @@ const LABELS = {
   duration_s: ["Duration", "s"],
   dt_s: ["Engine step", "s"],
   cloud_factor: ["Cloud factor (1=clear)", ""],
+  mode: ["Control mode", ""],
 
   name: ["Name", ""],
   inverter_max_kw: ["Inverter max", "kW"],
@@ -86,6 +87,21 @@ function makeField(prefix, key, value) {
     return wrap;
   }
 
+  if (key === "mode") {
+    const select = document.createElement("select");
+    select.dataset.path = id;
+    select.dataset.kind = "string";
+    for (const opt of ["uncoordinated", "coordinated"]) {
+      const o = document.createElement("option");
+      o.value = opt;
+      o.textContent = opt;
+      if (value === opt) o.selected = true;
+      select.appendChild(o);
+    }
+    wrap.appendChild(select);
+    return wrap;
+  }
+
   if (Array.isArray(value)) {
     const row = document.createElement("div");
     row.className = "triple";
@@ -134,6 +150,7 @@ function populateForm(defaults) {
     duration_s: defaults.duration_s,
     dt_s: defaults.dt_s,
     cloud_factor: defaults.cloud_factor,
+    mode: defaults.mode,
   };
   renderFields("sim-fields", "sim", sim);
   renderFields("estore-fields", "estore", defaults.estore);
