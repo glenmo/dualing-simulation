@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from datetime import date as date_t
 from datetime import datetime
 
@@ -10,6 +10,7 @@ import numpy as np
 
 from . import controller as ctl
 from .load import generate_three_phase_load
+from .metrics import compute_metrics
 from .params import SimParams
 from .solar import array_ac_power_series
 
@@ -32,6 +33,7 @@ class SimResult:
     load_total_kw: np.ndarray
     load_per_phase_kw: np.ndarray           # shape (3, N)
     target_w: float
+    metrics: dict = field(default_factory=dict)
 
     def to_json_dict(self) -> dict:
         return {
@@ -50,6 +52,7 @@ class SimResult:
             "load_total_kw": self.load_total_kw.tolist(),
             "load_per_phase_kw": self.load_per_phase_kw.tolist(),
             "target_w": self.target_w,
+            "metrics": self.metrics,
         }
 
 
@@ -174,4 +177,8 @@ def run(params: SimParams) -> SimResult:
         out.load_total_kw = out.load_total_kw[:log_idx]
         out.load_per_phase_kw = out.load_per_phase_kw[:, :log_idx]
 
+    out.metrics = compute_metrics(
+        out.t_s, out.poc_total_w, out.estore_ac_kw,
+        out.solax_ac_total_kw, out.target_w,
+    )
     return out

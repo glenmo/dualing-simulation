@@ -8,6 +8,7 @@ import pytest
 from app.sim import controller as ctl
 from app.sim.engine import run
 from app.sim.load import generate_three_phase_load
+from app.sim.metrics import compute_metrics
 from app.sim.params import LoadParams, SimParams, SystemParams
 from app.sim.solar import array_ac_power_series
 
@@ -149,6 +150,53 @@ def test_three_phase_modest_total_goes_to_loaded_phase() -> None:
     cmd = state.commanded_per_phase_kw
     assert cmd[1] == pytest.approx(0.9)
     assert cmd[0] == 0.0 and cmd[2] == 0.0
+
+
+def test_metrics_on_clean_oscillation() -> None:
+    # Sample at 0.25 s so the discrete series actually reaches the sine's peaks.
+    t = np.arange(0.0, 120.0, 0.25)
+    target = 100.0
+    poc = target + 100.0 * np.sin(2.0 * np.pi * t / 10.0)   # 10 s period, ±100 W
+    zeros = np.zeros_like(t)
+    m = compute_metrics(t, poc, zeros, zeros, target_w=target, settle_frac=0.0)
+    assert m["poc_dominant_period_s"] == pytest.approx(10.0, abs=0.5)
+    assert m["poc_peak_to_peak_w"] == pytest.approx(200.0, abs=2.0)
+    assert m["poc_rms_error_w"] == pytest.approx(70.7, abs=1.0)
+    # ~12 cycles over 120 s ⇒ ~24 target crossings ⇒ ~12 per minute.
+    assert m["target_crossings_per_min"] == pytest.approx(12.0, abs=1.0)
+
+
+def test_metrics_flat_at_target_are_quiet() -> None:
+    t = np.arange(0.0, 60.0, 1.0)
+    poc = np.full_like(t, 100.0)
+    zeros = np.zeros_like(t)
+    m = compute_metrics(t, poc, zeros, zeros, target_w=100.0, settle_frac=0.0)
+    assert m["poc_rms_error_w"] == pytest.approx(0.0)
+    assert m["poc_peak_to_peak_w"] == pytest.approx(0.0)
+    assert m["target_crossings_per_min"] == pytest.approx(0.0)
+    assert m["poc_dominant_period_s"] == pytest.approx(0.0)
+    assert m["export_energy_kwh"] == pytest.approx(0.0)
+
+
+def test_metrics_export_accounting() -> None:
+    # 10 samples at -3600 W (export) over 1 s each = -1 Wh? check kWh integral.
+    t = np.arange(0.0, 10.0, 1.0)
+    poc = np.full_like(t, -3600.0)            # 3.6 kW export, all samples
+    zeros = np.zeros_like(t)
+    m = compute_metrics(t, poc, zeros, zeros, target_w=100.0, settle_frac=0.0)
+    assert m["export_fraction_pct"] == pytest.approx(100.0)
+    # 3.6 kW × 10 s = 0.01 kWh
+    assert m["export_energy_kwh"] == pytest.approx(0.01, abs=1e-4)
+
+
+def test_run_attaches_metrics() -> None:
+    r = run(_short_params(duration_s=120.0, dt_s=0.5))
+    assert set(r.metrics) >= {
+        "poc_rms_error_w", "poc_peak_to_peak_w", "poc_dominant_period_s",
+        "target_crossings_per_min", "control_effort_kw",
+        "export_energy_kwh", "export_fraction_pct",
+    }
+    assert r.to_json_dict()["metrics"] is r.metrics
 
 
 def test_full_run_produces_consistent_shapes() -> None:

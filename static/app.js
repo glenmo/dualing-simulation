@@ -288,6 +288,31 @@ function renderSummary(r) {
     .join("");
 }
 
+function renderMetrics(m) {
+  const el = document.getElementById("metrics");
+  const title = document.getElementById("metrics-title");
+  if (!m) {
+    el.innerHTML = "";
+    title.hidden = true;
+    return;
+  }
+  const period = m.poc_dominant_period_s > 0
+    ? `${m.poc_dominant_period_s.toFixed(1)} s`
+    : "—";
+  const cards = [
+    ["RMS error vs target", `${m.poc_rms_error_w.toFixed(0)} W`],
+    ["Peak-to-peak swing", `${m.poc_peak_to_peak_w.toFixed(0)} W`],
+    ["Oscillation period", period],
+    ["Target crossings", `${m.target_crossings_per_min.toFixed(1)} /min`],
+    ["Control effort", `${m.control_effort_kw.toFixed(1)} kW`],
+    ["Export caused", `${m.export_energy_kwh.toFixed(2)} kWh (${m.export_fraction_pct.toFixed(0)}%)`],
+  ];
+  title.hidden = false;
+  el.innerHTML = cards
+    .map(([k, v]) => `<div class="card"><div class="k">${k}</div><div class="v">${v}</div></div>`)
+    .join("");
+}
+
 async function runSimulation(ev) {
   if (ev) ev.preventDefault();
   const btn = document.getElementById("run-btn");
@@ -308,6 +333,7 @@ async function runSimulation(ev) {
     }
     const r = await resp.json();
     renderSummary(r);
+    renderMetrics(r.metrics);
     renderCharts(payload, r);
     const ms = (performance.now() - t0).toFixed(0);
     status.textContent = `Done — ${r.t_s.length} samples over ${payload.duration_s}s (${ms} ms).`;
