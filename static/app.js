@@ -212,6 +212,9 @@ const PALETTE = {
   target: "#9333ea",
   poc: "#dc2626",
   amber: "#d97706",
+  phaseA: "#2563eb",
+  phaseB: "#16a34a",
+  phaseC: "#ea580c",
 };
 
 function lineChart(canvasId, title, labels, datasets, yLabel) {
@@ -258,6 +261,12 @@ function renderCharts(payload, r) {
     ds("POC total", r.poc_total_w, PALETTE.poc),
     ds("Target", r.poc_total_w.map(() => r.target_w), PALETTE.target,
        { borderDash: [6, 4], borderWidth: 1 }),
+  ], "W");
+
+  lineChart("chart-poc-phase", "POC per phase (import +)", labels, [
+    ds("Phase A", r.poc_per_phase_w[0], PALETTE.phaseA),
+    ds("Phase B", r.poc_per_phase_w[1], PALETTE.phaseB),
+    ds("Phase C", r.poc_per_phase_w[2], PALETTE.phaseC),
   ], "W");
 
   lineChart("chart-ac", "Inverter AC output", labels, [
