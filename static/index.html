@@ -5,19 +5,59 @@
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>Dualing Simulation</title>
 <link rel="stylesheet" href="/dualing-simulation/static/style.css">
+<script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.6/dist/chart.umd.min.js"></script>
 </head>
 <body>
 <header>
-  <h1>Dualing Simulation</h1>
-  <p class="subtitle">Two uncoordinated zero-export controllers sharing one POC.</p>
+  <div>
+    <h1>Dualing Simulation</h1>
+    <p class="subtitle">Two uncoordinated zero-export controllers sharing one point of connection.</p>
+  </div>
+  <div class="health">backend: <code id="health">checking…</code></div>
 </header>
+
 <main>
-  <section id="status">
-    <h2>Phase 1 — skeleton deployed</h2>
-    <p>Backend health: <code id="health">checking…</code></p>
-    <p>Next: simulation physics module, then UI.</p>
+  <aside id="panel">
+    <form id="params">
+      <fieldset>
+        <legend>Simulation window</legend>
+        <div id="sim-fields" class="grid"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>eStore <span class="muted">(single-phase)</span></legend>
+        <div id="estore-fields" class="grid"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>SolaX <span class="muted">(three-phase)</span></legend>
+        <div id="solax-fields" class="grid"></div>
+      </fieldset>
+
+      <fieldset>
+        <legend>House load</legend>
+        <div id="load-fields" class="grid"></div>
+      </fieldset>
+
+      <div class="actions">
+        <button type="submit" id="run-btn">Run simulation</button>
+        <button type="button" id="reset-btn" class="secondary">Reset defaults</button>
+      </div>
+    </form>
+  </aside>
+
+  <section id="results">
+    <div id="status-line" class="status-line">Adjust parameters and press <b>Run simulation</b>.</div>
+    <div id="summary" class="summary"></div>
+    <div class="charts">
+      <div class="chart-box"><canvas id="chart-poc"></canvas></div>
+      <div class="chart-box"><canvas id="chart-ac"></canvas></div>
+      <div class="chart-box"><canvas id="chart-soc"></canvas></div>
+      <div class="chart-box"><canvas id="chart-pv"></canvas></div>
+    </div>
   </section>
 </main>
+
 <script src="/dualing-simulation/static/app.js"></script>
 </body>
 </html>
