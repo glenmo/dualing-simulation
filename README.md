@@ -53,17 +53,20 @@ The two modelled systems are based on a real site (Mount Toolebewong, VIC):
 ```
 static/            Browser UI (no build step): form + Chart.js plots
   index.html
-  app.js           Fetches /api/defaults, POSTs /api/run, renders charts
+  app.js           Fetches /api/defaults, POSTs /api/run + /api/gain-sweep,
+                   renders charts, metrics and the stability sweep
   style.css
 app/
-  main.py          FastAPI app: /api/health, /api/defaults, /api/run, static, index
+  main.py          FastAPI app: /api/health, /api/defaults, /api/run,
+                   /api/gain-sweep, static, index
   sim/
     params.py      Dataclasses — single source of truth for engine inputs
     site.py        Site lat/lon/tz constants
     solar.py       pvlib clear-sky → AC power series
     load.py        Synthetic three-phase load generator
-    controller.py  Single-phase + three-phase inverter controllers
-    engine.py      Time-stepping loop, SOC integration, POC accounting
+    controller.py  Single/three-phase + coordinated controllers
+    engine.py      Time-stepping loop, SOC integration, POC accounting, gain sweep
+    metrics.py     Oscillation / control-quality metrics
 tests/             pytest smoke + property tests
 deploy/            Apache vhost, systemd unit, install.sh
 ```
@@ -93,7 +96,10 @@ Open <http://127.0.0.1:8765/dualing-simulation/>.
 
 `POST /api/run` takes the full parameter object (same shape as `/api/defaults`)
 and returns 1 Hz series for PV, inverter AC output (per-phase for SolaX),
-battery SOC, POC power, and load.
+battery SOC, PV curtailment, POC power (total and per phase), and load, plus a
+`metrics` block (RMS error, peak-to-peak, dominant oscillation period, target
+crossings/min, control effort, export energy). `POST /api/gain-sweep` re-runs a
+scenario across a gain range in both modes and returns those metrics per gain.
 
 ## Tests
 
@@ -103,8 +109,9 @@ battery SOC, POC power, and load.
 
 Covers load bounds/reproducibility, solar non-negativity and cloud/`start_hour`
 behaviour, ramp limiting, three-phase priority allocation, full-run shape/SOC
-invariants, and that the controllers steer the POC toward target without
-phantom export on a sunny day.
+invariants, no phantom export on a sunny day, SOC-ceiling curtailment and the
+discharge floor, the oscillation metrics, that coordinated mode tames the duel
+at destabilising gain, and the gain-sweep shape and trend.
 
 ## Deployment
 
