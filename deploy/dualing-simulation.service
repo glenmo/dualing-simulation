@@ -1,0 +1,16 @@
+[Unit]
+Description=Dualing Simulation FastAPI app
+After=network.target
+
+[Service]
+Type=simple
+User=glen
+Group=glen
+WorkingDirectory=/home/glen/dualing-simulation
+Environment="PATH=/home/glen/dualing-simulation/.venv/bin"
+ExecStart=/home/glen/dualing-simulation/.venv/bin/uvicorn app.main:app --host 127.0.0.1 --port 8765
+Restart=on-failure
+RestartSec=3
+
+[Install]
+WantedBy=multi-user.target
