@@ -8,6 +8,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from app.sim import params as sp_mod
+from app.sim.engine import gain_sweep as sweep_fn
 from app.sim.engine import run as sim_run
 
 BASE_DIR = Path(__file__).resolve().parent.parent
@@ -129,3 +130,31 @@ def run_simulation(req: SimParamsIn) -> dict:
     except Exception as exc:
         raise HTTPException(status_code=400, detail=str(exc)) from exc
     return result.to_json_dict()
+
+
+class GainSweepIn(BaseModel):
+    base: SimParamsIn                                       # scenario; its mode + gain are overridden
+    gain_min: float = Field(default=0.5, gt=0, le=20)
+    gain_max: float = Field(default=6.0, gt=0, le=20)
+    gain_steps: int = Field(default=12, ge=2, le=25)
+
+
+@app.post("/dualing-simulation/api/gain-sweep")
+def run_gain_sweep(req: GainSweepIn) -> dict:
+    """Sweep the proportional gain in both control modes and return oscillation
+    metrics per gain — the data behind the stability view."""
+    base = req.base.to_dc()
+    # Bound per-run cost: the sweep does up to 25×2 simulations in one request.
+    base.duration_s = min(base.duration_s, 3600.0)
+    base.dt_s = max(base.dt_s, 0.25)
+
+    lo, hi = sorted((req.gain_min, req.gain_max))
+    n = req.gain_steps
+    step = (hi - lo) / (n - 1)
+    gains = [lo + i * step for i in range(n)]
+
+    try:
+        modes = sweep_fn(base, gains)
+    except Exception as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+    return {"gains": gains, "modes": modes}

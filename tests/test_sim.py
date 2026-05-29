@@ -6,7 +6,7 @@ import numpy as np
 import pytest
 
 from app.sim import controller as ctl
-from app.sim.engine import run
+from app.sim.engine import gain_sweep, run
 from app.sim.load import generate_three_phase_load
 from app.sim.metrics import compute_metrics
 from app.sim.params import LoadParams, SimParams, SystemParams
@@ -221,6 +221,24 @@ def test_coordinated_mode_tames_the_duel() -> None:
     # ...while still steering the POC to the target on average.
     settled = co.poc_total_w[len(co.poc_total_w) // 3:]
     assert abs(settled.mean() - 100.0) < 500.0, settled.mean()
+
+
+def test_gain_sweep_shapes_and_duel_growth() -> None:
+    base = _short_params(duration_s=300.0, dt_s=0.5)
+    base.cloud_factor = 0.0
+    base.load.peaks_per_hour = 0.0
+    gains = [0.5, 2.0, 4.0]
+    res = gain_sweep(base, gains)
+    assert set(res) == {"uncoordinated", "coordinated"}
+    for mode in res:
+        for k in ("poc_rms_error_w", "poc_peak_to_peak_w"):
+            assert len(res[mode][k]) == len(gains)
+    # The duel destabilises with gain; coordination stays calmer at the top end.
+    assert (res["uncoordinated"]["poc_rms_error_w"][-1]
+            > res["coordinated"]["poc_rms_error_w"][-1])
+    # And the uncoordinated swing grows as gain rises.
+    assert (res["uncoordinated"]["poc_rms_error_w"][-1]
+            > res["uncoordinated"]["poc_rms_error_w"][0])
 
 
 def test_coordinated_respects_inverter_caps() -> None:

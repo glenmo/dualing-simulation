@@ -88,6 +88,7 @@ Open <http://127.0.0.1:8765/dualing-simulation/>.
 | GET    | `/dualing-simulation/api/health`   | Liveness + current phase/stage         |
 | GET    | `/dualing-simulation/api/defaults` | Default parameters to populate the UI  |
 | POST   | `/dualing-simulation/api/run`      | Run a simulation, return time series   |
+| POST   | `/dualing-simulation/api/gain-sweep` | Sweep gain in both modes → metrics per gain |
 | GET    | `/dualing-simulation/api/docs`     | Swagger UI                             |
 
 `POST /api/run` takes the full parameter object (same shape as `/api/defaults`)

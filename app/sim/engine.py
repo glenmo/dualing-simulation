@@ -188,3 +188,37 @@ def run(params: SimParams) -> SimResult:
         out.solax_ac_total_kw, out.target_w,
     )
     return out
+
+
+# Metrics tracked across a gain sweep (a subset of compute_metrics' output).
+SWEEP_METRIC_KEYS = (
+    "poc_rms_error_w",
+    "poc_peak_to_peak_w",
+    "control_effort_kw",
+    "target_crossings_per_min",
+)
+
+
+def gain_sweep(base: SimParams, gains: list[float]) -> dict:
+    """Run ``base`` at each proportional gain, in both control modes, returning
+    oscillation metrics per gain.
+
+    The same gain is applied to both inverters at each step. ``base`` is mutated
+    in place between runs (gain and mode) — callers should pass a throwaway copy.
+    Result shape::
+
+        {"uncoordinated": {metric: [v per gain], ...}, "coordinated": {...}}
+    """
+    out = {
+        mode: {k: [] for k in SWEEP_METRIC_KEYS}
+        for mode in ("uncoordinated", "coordinated")
+    }
+    for g in gains:
+        base.estore.proportional_gain = float(g)
+        base.solax.proportional_gain = float(g)
+        for mode in ("uncoordinated", "coordinated"):
+            base.mode = mode
+            metrics = run(base).metrics
+            for k in SWEEP_METRIC_KEYS:
+                out[mode][k].append(metrics[k])
+    return out

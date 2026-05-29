@@ -58,6 +58,15 @@
       <div class="chart-box"><canvas id="chart-soc"></canvas></div>
       <div class="chart-box"><canvas id="chart-pv"></canvas></div>
     </div>
+
+    <div class="sweep">
+      <div class="sweep-bar">
+        <button type="button" id="sweep-btn" class="secondary">Run stability sweep</button>
+        <span class="muted">— re-runs the current scenario across a range of proportional gains, both modes</span>
+        <span id="sweep-status" class="muted"></span>
+      </div>
+      <div class="chart-box" id="sweep-box" hidden><canvas id="chart-sweep"></canvas></div>
+    </div>
   </section>
 </main>
 

@@ -217,7 +217,7 @@ const PALETTE = {
   phaseC: "#ea580c",
 };
 
-function lineChart(canvasId, title, labels, datasets, yLabel) {
+function lineChart(canvasId, title, labels, datasets, yLabel, xLabel) {
   if (charts[canvasId]) charts[canvasId].destroy();
   const ctx = document.getElementById(canvasId).getContext("2d");
   charts[canvasId] = new Chart(ctx, {
@@ -235,7 +235,10 @@ function lineChart(canvasId, title, labels, datasets, yLabel) {
         decimation: { enabled: true, algorithm: "lttb", samples: 600 },
       },
       scales: {
-        x: { ticks: { maxTicksLimit: 12, autoSkip: true } },
+        x: {
+          ticks: { maxTicksLimit: 12, autoSkip: true },
+          title: { display: !!xLabel, text: xLabel },
+        },
         y: { title: { display: !!yLabel, text: yLabel } },
       },
     },
@@ -370,6 +373,55 @@ async function runSimulation(ev) {
   }
 }
 
+function renderSweep(data) {
+  const labels = data.gains.map((g) => g.toFixed(2));
+  const un = data.modes.uncoordinated.poc_rms_error_w;
+  const co = data.modes.coordinated.poc_rms_error_w;
+  document.getElementById("sweep-box").hidden = false;
+  lineChart(
+    "chart-sweep",
+    "Stability: POC RMS error vs proportional gain",
+    labels,
+    [
+      ds("Uncoordinated (duel)", un, PALETTE.poc, { pointRadius: 3 }),
+      ds("Coordinated", co, PALETTE.solax, { pointRadius: 3 }),
+    ],
+    "RMS error (W)",
+    "proportional gain",
+  );
+}
+
+async function runSweep() {
+  const btn = document.getElementById("sweep-btn");
+  const status = document.getElementById("sweep-status");
+  btn.disabled = true;
+  status.textContent = "Sweeping…";
+  const t0 = performance.now();
+  try {
+    const resp = await fetch(`${API}/gain-sweep`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        base: collectPayload(),
+        gain_min: 0.5,
+        gain_max: 6.0,
+        gain_steps: 12,
+      }),
+    });
+    if (!resp.ok) {
+      const err = await resp.json().catch(() => ({}));
+      throw new Error(err.detail || `HTTP ${resp.status}`);
+    }
+    const data = await resp.json();
+    renderSweep(data);
+    status.textContent = `${data.gains.length} gains × 2 modes in ${(performance.now() - t0).toFixed(0)} ms.`;
+  } catch (e) {
+    status.textContent = `Error: ${e.message}`;
+  } finally {
+    btn.disabled = false;
+  }
+}
+
 let DEFAULTS = null;
 
 async function loadDefaults() {
@@ -392,6 +444,7 @@ document.getElementById("params").addEventListener("submit", runSimulation);
 document.getElementById("reset-btn").addEventListener("click", () => {
   if (DEFAULTS) populateForm(DEFAULTS);
 });
+document.getElementById("sweep-btn").addEventListener("click", runSweep);
 
 checkHealth();
 loadDefaults();
